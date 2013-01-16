@@ -1,26 +1,35 @@
-#!/bin/sh
+#!/bin/bash
 
 # TODO rename this file.
 set -e
 set -u
 
 help() {
-  echo "Usage: ans2und.sh [-u username][-l][-p postprocessing] -e 'ec2 group pattern' 'shell command'"
+  echo "Usage: ans2und.sh [-u username][-l][-p postprocessing][-m module] -e 'ec2 group pattern' 'ansible arguments'"
   echo ""
   echo "Options:"
   echo " -p underscore postprocessing. (ie, select .stdout)"
   echo " -e group pattern"
+  echo " -m ansible module. (default: shell)"
+  echo " 'ansible arguments' correspond to ansible's -a option."
+  echo ""
+  echo "Example:"
+  echo ""
   exit 1
 }
 
 VERBOSE=0
 USER='root'
 LISTONLY=0
-# TODO figure out how to do postprocessing...
-POSTPROCESSING='select .stdout'
+# first, just select STDOUT, then break it out by line breaks
+POSTPROCESSING="underscore select .stdout | underscore --color --coffee map 'value.split(\"\\n\")'"
 EC2PATTERN=''
-while getopts "vlp:u:e:" opt; do
+ANSIBLEMODULE='shell'
+while getopts "vlp:u:e:m:" opt; do
   case $opt in
+    m )
+      ANSIBLEMODULE=$OPTARG
+      ;;
     e )
       EC2PATTERN=$OPTARG
       ;;
@@ -69,11 +78,12 @@ else
   mkdir out
   matchesjoined=`cat matches.txt | tr "\\n" ":"`
   # do the ansible command, regardless of the error, continue to post processing
-  (ansible -i ./ec2.py -u $USER $matchesjoined -m command -a "$1" -t out ; true)
+  echo ansible -i ./ec2.py -u $USER $matchesjoined -m shell -a "$1" -t out
+  (ansible -i ./ec2.py -u $USER $matchesjoined -m shell -a "$1" -t out ; true)
   # loop thru the results and do post processing, if there is no failure.
   cd out
   echo "[1m----------------------------------------------------------------------[0m"
-  echo "[1mPost Processing:0m"
+  echo "[1mPost Processing:[0m"
   echo "[1m----------------------------------------------------------------------[0m"
   for i in *; do
     tag=`cat /tmp/ansible-ec2.cache | underscore map --coffee -q "console.log(key) if key.match(/^tag_Name/) && value[0].match(/$i/)"`
@@ -82,14 +92,10 @@ else
       echo "[1m$tag[0m : [1;31mFAILED[0m"
     else
       echo "[1m$tag[0m :"
-      cat $i | underscore --color $POSTPROCESSING
+      eval "cat ${i} | ${POSTPROCESSING}"
     fi
   done
   cd ..
-  rm -rf out
 fi
 
 rm matches.txt
-
-# TODO extend this to do a search, and then do a search/run thru ansible.
-
