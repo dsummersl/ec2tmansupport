@@ -73,7 +73,10 @@ else
   do
     # pull the actual host name from whatever the tag name was:
     hostname=`cat /tmp/ansible-ec2.cache | underscore select .$line | underscore process "console.log(data[0][0])"`
-    tmux new-window -t "$TMUXSESSION:$cnt" -n "$line" "ssh -o StrictHostKeyChecking=no $SSHUSER@$hostname"
+    tmux new-window -t "$TMUXSESSION:$cnt"
+    tmux rename-window -t "$TMUXSESSION:$cnt" $line
+    tmux set-window-option -t "$TMUXSESSION:$cnt" allow-rename off
+    tmux send-keys -t "$TMUXSESSION:$cnt" "ssh -o StrictHostKeyChecking=no $SSHUSER@$hostname" C-m
     let cnt=$cnt+1
   done < matches.txt
   # remove session 0 - which is not connected to anything
