@@ -18,8 +18,6 @@ help() {
   exit 1
 }
 
-# TODO specify a specific number of connectsion per window (like 4 per window)
-
 if [[ "$TERM" = "screen"  && -n "$TMUX" ]]
 then
   echo "ERROR: You are inside a tmux session!"
@@ -31,7 +29,7 @@ LISTONLY=0
 TMUXSESSION='ec2hosts'
 SSHUSER='root'
 MAXPANECOUNT=0
-while getopts "ls:u:" opt; do
+while getopts "ls:u:p:" opt; do
   case $opt in
     p )
       MAXPANECOUNT=$OPTARG
@@ -77,35 +75,38 @@ else
   # turn on window activity notification:
   tmux set-window-option -t "$TMUXSESSION" -g monitor-activity on
   tmux set-option -t "$TMUXSESSION" -g visual-activity on
-  # TODO session name.
+
   tmux bind-key e command-prompt -p "message?" "run-shell \"./lib/execute_everywhere.sh '%1'\""
 
-  cnt=1
+  cnt=0
   wcnt=0
+  first=1
   while read line
   do
     # pull the actual host name from whatever the tag name was:
     hostname=`cat /tmp/ansible-ec2.cache | underscore select .$line | underscore process "console.log(data[0][0])"`
     if [ $cnt -lt $MAXPANECOUNT -o $MAXPANECOUNT -eq 0 ]; then
-      if [[ $cnt -gt 1 ]]; then
+      if [[ $first = 0 ]]; then
         tmux split-window -t "$TMUXSESSION:$wcnt"
       fi
+      first=0
       let cnt=$cnt+1
     else
+      let cnt=$cnt+1
+      let wcnt=$wcnt+1
+      cnt=1
       tmux new-window -t "$TMUXSESSION:$wcnt"
       tmux rename-window -t "$TMUXSESSION:$wcnt" $line
       tmux set-window-option -t "$TMUXSESSION:$wcnt" allow-rename off
-      let wcnt=$wcnt+1
-      let cnt=1
     fi
-    tmux send-keys -t "$TMUXSESSION:$wcnt" "ssh -o StrictHostKeyChecking=no $SSHUSER@$hostname" C-m
 
+    tmux send-keys -t "$TMUXSESSION:$wcnt" "ssh -o StrictHostKeyChecking=no $SSHUSER@$hostname" C-m
     tmux select-layout -t "$TMUXSESSION:$wcnt" tiled
   done < matches.txt
+
   # remove session 0 - which is not connected to anything
   # TODO provide a hotkey to run in all sessions
-  # TODO provide a key to collapse all windows into X panes per window
-  # TODO provide a key to move all panes out
+
   tmux attach-session -t "$TMUXSESSION"
 fi
 
