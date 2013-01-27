@@ -21,6 +21,11 @@ ansible. Use ansible with ec2 by specifying the ec2 script to search boxes.
 
 __tmux.sh__ -- open up several SSH connections in a new tmux session.
 
+Examples
+====
+
+./find.sh -u dsummers -p -e '.*name.*' 'du -sh /var/log/messages'
+
 Requirements
 ====
 

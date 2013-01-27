@@ -5,14 +5,15 @@ set -e
 set -u
 
 help() {
-  echo "Usage: find.sh [-u username][-l][-p postprocessing][-m module] -e 'ec2 group pattern' 'ansible arguments'"
+  echo "Usage: find.sh [-u username][-l][-f postfail][-p postprocessing][-m module] -e 'ec2 group pattern' 'ansible arguments'"
   echo ""
   echo "Run a command on a set of ec2 instances. Provides regex matching on the"
   echo "ec2 group/instance/tag names."
   echo ""
   echo "Options:"
   echo " -l just list matching nodes, don't do anything"
-  echo " -p underscore postprocessing. (ie, select .stdout)"
+  echo " -p underscore postprocessing(ie, select .stdout). Prints host name and stdout by default."
+  echo " -f underscore post fail (ie, select .failed). Prints host name by default"
   echo " -e group pattern"
   echo " -m ansible module. (default: shell)"
   echo " 'ansible arguments' correspond to ansible's -a option."
@@ -30,15 +31,19 @@ USER='root'
 LISTONLY=0
 # first, just print the host, then break out the output (of shell) by line breaks
 POSTPROCESSING="map 'h = {} ; h[k] = v.stdout.split(\"\\n\") for k,v of value; h'"
+POSTFAIL="-q map 'console.log(k) for k,v of value'"
 EC2PATTERN=''
 ANSIBLEMODULE='shell'
-while getopts "vlp:u:e:m:" opt; do
+while getopts "vlp:u:e:m:f:" opt; do
   case $opt in
     m )
       ANSIBLEMODULE=$OPTARG
       ;;
     e )
       EC2PATTERN=$OPTARG
+      ;;
+    f )
+      POSTFAIL=$OPTARG
       ;;
     p )
       POSTPROCESSING=$OPTARG
@@ -107,10 +112,12 @@ else
   echo "[1m----------------------------------------------------------------------[0m"
   underscore -i out/all.json --coffee filter '(k for k,v of value when v?.failed).length > 0' > out/failed.json
   underscore -i out/all.json --coffee filter '(k for k,v of value when not ("failed" of v)).length > 0' > out/results.json
+
   echo "Failed:"
-  underscore -i out/failed.json --coffee --color -q map "console.log(k) for k,v of value"
-  echo "Processed: underscore -i out/results.json --color --coffee $POSTPROCESSING"
+  eval "underscore -i out/failed.json --color --coffee $POSTFAIL"
+
+  echo "Processed:"
   eval "underscore -i out/results.json --color --coffee $POSTPROCESSING"
 fi
 
-#rm matches.txt
+rm matches.txt
