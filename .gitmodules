@@ -1,0 +1,3 @@
+[submodule "ansible-plugins"]
+	path = ansible-plugins
+	url = git://github.com/mpdehaan/ansible-plugins.git

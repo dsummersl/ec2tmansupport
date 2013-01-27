@@ -29,3 +29,8 @@ npm install -g underscore-cli
 tmux
 
 Ansible
+
+Testing
+====
+
+sh lib/test/json_test.sh

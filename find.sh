@@ -5,9 +5,13 @@ set -e
 set -u
 
 help() {
-  echo "Usage: ans2und.sh [-u username][-l][-p postprocessing][-m module] -e 'ec2 group pattern' 'ansible arguments'"
+  echo "Usage: find.sh [-u username][-l][-p postprocessing][-m module] -e 'ec2 group pattern' 'ansible arguments'"
+  echo ""
+  echo "Run a command on a set of ec2 instances. Provides regex matching on the"
+  echo "ec2 group/instance/tag names."
   echo ""
   echo "Options:"
+  echo " -l just list matching nodes, don't do anything"
   echo " -p underscore postprocessing. (ie, select .stdout)"
   echo " -e group pattern"
   echo " -m ansible module. (default: shell)"
@@ -15,14 +19,17 @@ help() {
   echo ""
   echo "Example:"
   echo ""
+  echo "   # collect the size of all the messages files."
+  echo "   ./find.sh -u USERNAME -e '.*prod-frontend[1-9]' 'du -sh /var/log/messages'"
+  echo ""
   exit 1
 }
 
 VERBOSE=0
 USER='root'
 LISTONLY=0
-# first, just select STDOUT, then break it out by line breaks
-POSTPROCESSING="underscore select .stdout | underscore --color --coffee map 'value.split(\"\\n\")'"
+# first, just print the host, then break out the output (of shell) by line breaks
+POSTPROCESSING="map 'h = {} ; h[k] = v.stdout.split(\"\\n\") for k,v of value; h'"
 EC2PATTERN=''
 ANSIBLEMODULE='shell'
 while getopts "vlp:u:e:m:" opt; do
@@ -66,7 +73,7 @@ fi
 
 # if the inventory can't be found regenerate it
 if [[ ! -e /tmp/ansible-ec2.cache ]]; then
-  ./ec2.py > /tmp/ansible-ec2.cache
+  ./ansible-plugins/inventory/ec2.py > /tmp/ansible-ec2.cache
 fi
 
 cat /tmp/ansible-ec2.cache | underscore --coffee map -q "console.log(key) if key.match(/$EC2PATTERN/)" > matches.txt
@@ -78,24 +85,32 @@ else
   mkdir out
   matchesjoined=`cat matches.txt | tr "\\n" ":"`
   # do the ansible command, regardless of the error, continue to post processing
-  echo ansible -i ./ec2.py -u $USER $matchesjoined -m shell -a "$1" -t out
-  (ansible -i ./ec2.py -u $USER $matchesjoined -m shell -a "$1" -t out ; true)
+  echo ansible -i ./ansible-plugins/inventory/ec2.py -u $USER $matchesjoined -m shell -a "$1" -t out
+  (ansible -i ./ansible-plugins/inventory/ec2.py -u $USER $matchesjoined -m shell -a "$1" -t out > /dev/null ; true)
   # loop thru the results and do post processing, if there is no failure.
-  cd out
+
+  # print the opening list w/o a carriage return
+  echo '[' > all.json
+  # allow an empty list:
+  shopt -s extglob
+  for i in out/*; do
+    echo "{'$i':" >> all.json
+    cat "$i" >> all.json
+    echo "}," >> all.json
+  done
+  # print the trailing list w/o a carriage return
+  echo "]" >> all.json
+  mv all.json out
+
   echo "[1m----------------------------------------------------------------------[0m"
   echo "[1mPost Processing:[0m"
   echo "[1m----------------------------------------------------------------------[0m"
-  for i in *; do
-    tag=`cat /tmp/ansible-ec2.cache | underscore map --coffee -q "console.log(key) if key.match(/^tag_Name/) && value[0].match(/$i/)"`
-    failed=`cat $i | underscore select .failed`
-    if [[ "$failed" == "[true]" ]]; then
-      echo "[1m$tag[0m : [1;31mFAILED[0m"
-    else
-      echo "[1m$tag[0m :"
-      eval "cat ${i} | ${POSTPROCESSING}"
-    fi
-  done
-  cd ..
+  underscore -i out/all.json --coffee filter '(k for k,v of value when v?.failed).length > 0' > out/failed.json
+  underscore -i out/all.json --coffee filter '(k for k,v of value when not ("failed" of v)).length > 0' > out/results.json
+  echo "Failed:"
+  underscore -i out/failed.json --coffee --color -q map "console.log(k) for k,v of value"
+  echo "Processed: underscore -i out/results.json --color --coffee $POSTPROCESSING"
+  eval "underscore -i out/results.json --color --coffee $POSTPROCESSING"
 fi
 
-rm matches.txt
+#rm matches.txt
