@@ -4,6 +4,8 @@
 set -e
 set -u
 
+source lib/json.sh
+
 help() {
   echo "Usage: find.sh [-u username][-l][-f postfail][-p postprocessing][-m module] -e 'ec2 group pattern' 'ansible arguments'"
   echo ""
@@ -94,17 +96,7 @@ else
   (ansible -i ./ansible-plugins/inventory/ec2.py -u $USER $matchesjoined -m shell -a "$1" -t out > /dev/null ; true)
   # loop thru the results and do post processing, if there is no failure.
 
-  # print the opening list w/o a carriage return
-  echo '[' > all.json
-  # allow an empty list:
-  shopt -s extglob
-  for i in out/*; do
-    echo "{'$i':" >> all.json
-    cat "$i" >> all.json
-    echo "}," >> all.json
-  done
-  # print the trailing list w/o a carriage return
-  echo "]" >> all.json
+  combinejsonfiles out all.json
   mv all.json out
 
   echo "[1m----------------------------------------------------------------------[0m"
