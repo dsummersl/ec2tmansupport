@@ -61,7 +61,7 @@ shift
 
 # if the inventory can't be found regenerate it
 if [[ ! -e /tmp/ansible-ec2.cache ]]; then
-  ./ec2.py > /tmp/ansible-ec2.cache
+  ansible-plugins/inventory/ec2.py > /tmp/ansible-ec2.cache
 fi
 
 cat /tmp/ansible-ec2.cache | underscore --coffee map -q "console.log(key) if key.match(/$EC2PATTERN/)" > matches.txt
