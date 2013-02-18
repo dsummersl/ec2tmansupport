@@ -32,7 +32,10 @@ VERBOSE=0
 USER='root'
 LISTONLY=0
 # first, just print the host, then break out the output (of shell) by line breaks
-POSTPROCESSING="map 'h = {} ; h[k] = v.stdout.split(\"\\n\") for k,v of value; h'"
+POSTPROCESSING="map 'h = {} ; h[k] = v?.stdout?.split(\"\\n\") for k,v of value; h'"
+# this is ideal for non-ssh stuff:
+#POSTPROCESSING="map 'h = {} ; h[k] = v?.changed for k,v of value; h'"
+# for fails, print out the hostname only.
 POSTFAIL="-q map 'console.log(k) for k,v of value'"
 EC2PATTERN=''
 ANSIBLEMODULE='shell'
@@ -83,26 +86,38 @@ if [[ ! -e /tmp/ansible-ec2.cache ]]; then
   ansible-plugins/inventory/ec2.py > /tmp/ansible-ec2.cache
 fi
 
-cat /tmp/ansible-ec2.cache | underscore --coffee map -q "console.log(key) if key.match(/$EC2PATTERN/)" > matches.txt
+# obtain both the group name, and the host names for each match
+cat /tmp/ansible-ec2.cache | underscore --coffee map \
+  "[key,value] if key.match(/$EC2PATTERN/)" \
+  | underscore filter value \
+  | underscore --coffee process "h={}; h[v[0]] = v[1] for k,v of data; h" > matches.txt
 
 if [[ $LISTONLY -eq 1 ]]; then
-  cat matches.txt
+  underscore -i matches.txt map -q "console.log(key)"
 else
   rm -rf out
   mkdir out
-  matchesjoined=`cat matches.txt | tr "\\n" ":"`
-  # do the ansible command, regardless of the error, continue to post processing
-  echo ansible -i ./ansible-plugins/inventory/ec2.py -u $USER $matchesjoined -m shell -a "$1" -t out
-  (ansible -i ./ansible-plugins/inventory/ec2.py -u $USER $matchesjoined -m shell -a "$1" -t out > /dev/null ; true)
-  # loop thru the results and do post processing, if there is no failure.
 
+  # extract the group name and join them into one line of ansible search terms
+  underscore -i matches.txt map -q "console.log(key)" > groups.txt
+  matchesjoined=`cat groups.txt | tr "\\n" ":"`
+
+  # do the ansible command, regardless of the error, continue to post processing
+  echo ansible -i ./ansible-plugins/inventory/ec2.py -u $USER $matchesjoined -m $ANSIBLEMODULE -a "$1" -t out
+  (ansible -i ./ansible-plugins/inventory/ec2.py -u $USER $matchesjoined -m $ANSIBLEMODULE -a "$1" -t out > /dev/null ; true)
+
+  # combine all the results into one json file
   combinejsonfiles out all.json
   mv all.json out
 
   echo "[1m----------------------------------------------------------------------[0m"
   echo "[1mPost Processing:[0m"
   echo "[1m----------------------------------------------------------------------[0m"
+
+  # group all the failed groups together:
   underscore -i out/all.json --coffee filter '(k for k,v of value when v?.failed).length > 0' > out/failed.json
+
+  # group all the succeeded hosts together.
   underscore -i out/all.json --coffee filter '(k for k,v of value when not ("failed" of v)).length > 0' > out/results.json
 
   echo "Failed:"
@@ -112,4 +127,5 @@ else
   eval "underscore -i out/results.json --color --coffee $POSTPROCESSING"
 fi
 
-rm matches.txt
+#rm groups.txt
+#rm matches.txt
