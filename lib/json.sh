@@ -17,6 +17,7 @@ combinejsonfiles() {
   echo '[' > $output
   # allow an empty list:
   shopt -s extglob
+  shopt -s nullglob
   for i in $dir/*; do
     echo "{'$i':" >> $output
     cat "$i" >> $output
