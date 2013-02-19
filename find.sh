@@ -20,10 +20,17 @@ help() {
   echo " -m ansible module. (default: shell)"
   echo " 'ansible arguments' correspond to ansible's -a option."
   echo ""
+  echo "Output:"
+  echo "  out/all.json     = All of the results stored as a JSON hash."
+  echo "  out/failed.json  = The portion of all.json that failed (bad credentials, no connection, etc)."
+  echo "                     The '-f' option processes this file."
+  echo "  out/results.json = The portion of all.json that succeeded."
+  echo "                     The '-p' option processes this file."
+  echo ""
   echo "Example:"
   echo ""
   echo "   # collect the size of all the messages files."
-  echo "   ./find.sh -u USERNAME -e '.*prod-frontend[1-9]' 'du -sh /var/log/messages'"
+  echo "   ./find.sh -u USERNAME -e 'prod[1-9]' 'du -sh /var/log/messages'"
   echo ""
   exit 1
 }
