@@ -64,7 +64,7 @@ if [[ ! -e /tmp/ansible-ec2.cache ]]; then
   ansible-plugins/inventory/ec2.py > /tmp/ansible-ec2.cache
 fi
 
-cat /tmp/ansible-ec2.cache | underscore --coffee map -q "console.log(key) if key.match(/$EC2PATTERN/)" > matches.txt
+underscore -i /tmp/ansible-ec2.cache --coffee map -q "console.log(key) if key.match(/$EC2PATTERN/)" > matches.txt
 
 if [[ $LISTONLY -eq 1 ]]; then
   cat matches.txt
@@ -84,7 +84,7 @@ else
   while read line
   do
     # pull the actual host name from whatever the tag name was:
-    hostname=`cat /tmp/ansible-ec2.cache | underscore select .$line | underscore process "console.log(data[0][0])"`
+    hostname=`underscore -i /tmp/ansible-ec2.cache select .$line >/tmp/__a &&  underscore -i /tmp/__a process "console.log(data[0][0])"`
     if [ $cnt -lt $MAXPANECOUNT -o $MAXPANECOUNT -eq 0 ]; then
       if [[ $first = 0 ]]; then
         tmux split-window -t "$TMUXSESSION:$wcnt"
