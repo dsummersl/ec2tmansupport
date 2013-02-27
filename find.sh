@@ -97,10 +97,10 @@ if [[ ! -e /tmp/ansible-ec2.cache ]]; then
 fi
 
 # obtain both the group name, and the host names for each match
-cat /tmp/ansible-ec2.cache | underscore --coffee map \
-  "[key,value] if key.match(/$EC2PATTERN/)" \
-  | underscore filter value \
-  | underscore --coffee process "h={}; h[v[0]] = v[1] for k,v of data; h" > matches.txt
+underscore -i /tmp/ansible-ec2.cache --coffee map "[key,value] if key.match(/$EC2PATTERN/)" > __a.json
+underscore -i __a.json filter value > __b.json
+mv __b.json __a.json
+underscore -i __a.json --coffee process "h={}; h[v[0]] = v[1] for k,v of data; h" > matches.txt
 
 if [[ $LISTONLY -eq 1 ]]; then
   underscore -i matches.txt map -q "console.log(key)"
@@ -129,7 +129,7 @@ else
 
     # try to find the tag name of the instance. If it can't be found, just show
     # the host name
-    tag=`cat /tmp/ansible-ec2.cache| underscore --coffee map -q "console.log(key) if size(value) == 1 && value[0].match(/$key/) && key.indexOf('tag') == 0"`
+    tag=`underscore -i /tmp/ansible-ec2.cache --coffee map -q "console.log(key) if size(value) == 1 && value[0].match(/$key/) && key.indexOf('tag') == 0"`
     if [[ -z "$tag" ]]
     then
       echo "{'$key':" >> $output
@@ -161,5 +161,6 @@ else
   eval "underscore -i out/results.json --color --coffee $POSTPROCESSING"
 fi
 
-#rm groups.txt
-#rm matches.txt
+rm groups.txt
+rm matches.txt
+rm __a.json
