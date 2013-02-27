@@ -1,10 +1,13 @@
 #!/bin/bash
 
+# TODO Use the location of this script for relative references...
+# script_dir="$(dirname "$(readlink -f ${BASH_SOURCE[0]})")"
+
+# TODO write an install script. setup.py? http://docs.python.org/2/distutils/setupscript.html
+
 # TODO rename this file.
 set -e
 set -u
-
-source lib/json.sh
 
 help() {
   echo "Usage: find.sh [-u username][-l][-f postfail][-p postprocessing][-m module] -e 'ec2 group pattern' 'ansible arguments'"
@@ -114,7 +117,31 @@ else
   (ansible -i ./ansible-plugins/inventory/ec2.py -u $USER $matchesjoined -m $ANSIBLEMODULE -a "$1" -t out > /dev/null ; true)
 
   # combine all the results into one json file
-  combinejsonfiles out all.json
+  dir='out'
+  output='all.json'
+  # print the opening list w/o a carriage return
+  echo '[' > $output
+  # allow an empty list:
+  shopt -s extglob
+  shopt -s nullglob
+  for i in $dir/*; do
+    key=`echo $i | sed 's/out\///'`
+
+    # try to find the tag name of the instance. If it can't be found, just show
+    # the host name
+    tag=`cat /tmp/ansible-ec2.cache| underscore --coffee map -q "console.log(key) if size(value) == 1 && value[0].match(/$key/) && key.indexOf('tag') == 0"`
+    if [[ -z "$tag" ]]
+    then
+      echo "{'$key':" >> $output
+    else
+      echo "{'$tag':" >> $output
+    fi
+
+    cat "$i" >> $output
+    echo "}," >> $output
+  done
+  # print the trailing list w/o a carriage return
+  echo "]" >> $output
   mv all.json out
 
   echo "[1m----------------------------------------------------------------------[0m"
