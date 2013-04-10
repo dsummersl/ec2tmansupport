@@ -64,7 +64,13 @@ if [[ ! -e /tmp/ansible-ec2.cache ]]; then
   ansible-plugins/inventory/ec2.py > /tmp/ansible-ec2.cache
 fi
 
-underscore -i /tmp/ansible-ec2.cache --coffee map -q "console.log(key) if key.match(/$EC2PATTERN/)" > matches.txt
+underscore -i /tmp/ansible-ec2.cache --coffee map "[key,value] if key.match(/$EC2PATTERN/)" > __a.json
+underscore -i __a.json filter value > __b.json
+mv __b.json __a.json
+underscore -i __a.json --coffee process "h={}; h[v[0]] = v[1] for k,v of data; h" > __b.json
+
+# extract the group name and join them into one line of ansible search terms
+underscore -i __b.json --coffee map -q "console.log(v) for i,v of value" > matches.txt
 
 if [[ $LISTONLY -eq 1 ]]; then
   cat matches.txt
@@ -84,7 +90,7 @@ else
   while read line
   do
     # pull the actual host name from whatever the tag name was:
-    hostname=`underscore -i /tmp/ansible-ec2.cache select .$line >/tmp/__a &&  underscore -i /tmp/__a process "console.log(data[0][0])"`
+    hostname=$line
     if [ $cnt -lt $MAXPANECOUNT -o $MAXPANECOUNT -eq 0 ]; then
       if [[ $first = 0 ]]; then
         tmux split-window -t "$TMUXSESSION:$wcnt"
@@ -110,4 +116,4 @@ else
   tmux attach-session -t "$TMUXSESSION"
 fi
 
-rm matches.txt
+rm matches.txt __b.json

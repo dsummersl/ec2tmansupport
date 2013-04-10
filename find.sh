@@ -9,8 +9,15 @@
 set -e
 set -u
 
+# TODO ONLY provide the following options:
+# get rid of th -e pattern - it should just be the 'host patten' as known by ansible
+# use -r for 'read only' (list only).
+# 
+# in other words, this command should be as much like ansible as possible.
+# python and argparse would probably make more sense here...
+
 help() {
-  echo "Usage: find.sh [-u username][-l][-f postfail][-p postprocessing][-m module] -e 'ec2 group pattern' 'ansible arguments'"
+  echo "Usage: find.sh [-u username][-l][-f postfail][-p postprocessing][-a ansible options] -e 'ec2 group pattern' 'ansible arguments'"
   echo ""
   echo "Run a command on a set of ec2 instances. Provides regex matching on the"
   echo "ec2 group/instance/tag names."
@@ -20,7 +27,7 @@ help() {
   echo " -p underscore postprocessing(ie, select .stdout). Prints host name and stdout by default."
   echo " -f underscore post fail (ie, select .failed). Prints host name by default"
   echo " -e group pattern"
-  echo " -m ansible module. (default: shell)"
+  echo " -a ansible options (default: -m shell)"
   echo " 'ansible arguments' correspond to ansible's -a option."
   echo ""
   echo "Output:"
@@ -41,18 +48,19 @@ help() {
 VERBOSE=0
 USER='root'
 LISTONLY=0
+ANSIBLEOPTIONS='-m shell'
+POSTPROCESSING=''
 # first, just print the host, then break out the output (of shell) by line breaks
-POSTPROCESSING="map 'h = {} ; h[k] = v?.stdout?.split(\"\\n\") for k,v of value; h'"
+SHELLPOSTPROCESSING="map 'h = {} ; h[k] = v?.stdout?.split(\"\\n\") for k,v of value; h'"
 # this is ideal for non-ssh stuff:
-#POSTPROCESSING="map 'h = {} ; h[k] = v?.changed for k,v of value; h'"
+COPYPOSTPROCESSING="map 'h = {} ; h[k] = v?.changed for k,v of value; h'"
 # for fails, print out the hostname only.
 POSTFAIL="-q map 'console.log(k) for k,v of value'"
 EC2PATTERN=''
-ANSIBLEMODULE='shell'
-while getopts "vlp:u:e:m:f:" opt; do
+while getopts "vlp:u:e:a:f:" opt; do
   case $opt in
-    m )
-      ANSIBLEMODULE=$OPTARG
+    a )
+      ANSIBLEOPTIONS=$OPTARG
       ;;
     e )
       EC2PATTERN=$OPTARG
@@ -78,6 +86,16 @@ while getopts "vlp:u:e:m:f:" opt; do
   esac
 done
 
+if [[ "$POSTPROCESSING" = "" ]]
+then
+  if [[ "$ANSIBLEOPTIONS" = "-m copy" ]]
+  then
+    POSTPROCESSING=$COPYPOSTPROCESSING
+  else
+    POSTPROCESSING=$SHELLPOSTPROCESSING
+  fi
+fi
+
 shift $((OPTIND-1))
 
 if [[ $LISTONLY == 0 ]]; then
@@ -102,19 +120,19 @@ underscore -i __a.json filter value > __b.json
 mv __b.json __a.json
 underscore -i __a.json --coffee process "h={}; h[v[0]] = v[1] for k,v of data; h" > matches.txt
 
+# extract the group name and join them into one line of ansible search terms
+underscore -i matches.txt --coffee map -q "console.log(v) for i,v of value" > groups.txt
+matchesjoined=`cat groups.txt | tr "\\n" ":"`
+
 if [[ $LISTONLY -eq 1 ]]; then
-  underscore -i matches.txt map -q "console.log(key)"
+  underscore -i matches.txt --coffee map -q "console.log(v) for i,v of value"
 else
   rm -rf out
   mkdir out
 
-  # extract the group name and join them into one line of ansible search terms
-  underscore -i matches.txt map -q "console.log(key)" > groups.txt
-  matchesjoined=`cat groups.txt | tr "\\n" ":"`
-
   # do the ansible command, regardless of the error, continue to post processing
-  echo ansible -i ./ansible-plugins/inventory/ec2.py -u $USER $matchesjoined -m $ANSIBLEMODULE -a "$1" -t out
-  (ansible -i ./ansible-plugins/inventory/ec2.py -u $USER $matchesjoined -m $ANSIBLEMODULE -a "$1" -t out > /dev/null ; true)
+  echo ansible -i ./ansible-plugins/inventory/ec2.py -u $USER $matchesjoined $ANSIBLEOPTIONS -a "$1" -t out
+  (ansible -i ./ansible-plugins/inventory/ec2.py -u $USER $matchesjoined $ANSIBLEOPTIONS -a "$1" -t out > /dev/null ; true)
 
   # combine all the results into one json file
   dir='out'
@@ -161,6 +179,4 @@ else
   eval "underscore -i out/results.json --color --coffee $POSTPROCESSING"
 fi
 
-rm groups.txt
-rm matches.txt
-rm __a.json
+rm -f groups.txt matches.txt __a.json
