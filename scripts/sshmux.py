@@ -25,6 +25,7 @@ def main():
 	parser.add_argument('--log','-l',default="WARN", help="Log level (default: WARN)")
 	parser.add_argument('--panes','-p',default=6, help="Max SSH panes per window (default: 6)")
 	parser.add_argument('--session','-s',default='shmux', help="tmux session name (default: shmux)")
+	parser.add_argument('--sync','-S', action='store_true',help="Run set-option synchronize-panes on each tmux window")
 	parser.add_argument('hosts',nargs='+', help="Host names to connect to")
 	args = parser.parse_args()
 
@@ -43,6 +44,8 @@ def main():
 	first=1
 	for host in args.hosts:
 		logger.debug('Host = {}'.format(host))
+		if cnt == 0 and args.sync:
+			tmux("set-option -t {}:{} synchronize-panes".format(args.session,wcnt))
 		if cnt < args.panes or args.panes == 0:
 			if first == 0:
 				tmux("split-window -t {}".format("{}:{}".format(args.session,wcnt)))
@@ -55,6 +58,8 @@ def main():
 			tmux("new-window -t {}:{}".format(args.session,wcnt))
 			tmux("rename-window -t {}:{} {}".format(args.session,wcnt,host))
 			tmux("set-window-option -t {}:{} allow-rename ofargs.session,wcntf".format(args.session,wcnt))
+			if args.sync:
+				tmux("set-option -t {}:{} synchronize-panes".format(args.session,wcnt))
 
 		tmux("send-keys -t {}:{} \"ssh {}\" C-m".format(args.session,wcnt,host))
 		tmux("select-layout -t {}:{} tiled".format(args.session,wcnt))
